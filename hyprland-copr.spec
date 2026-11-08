@@ -27,6 +27,8 @@
 %global hyprlock_release        1
 %global hypridle_version        0.1.8
 %global hypridle_release        2
+%global guiutils_version        0.2.2
+%global guiutils_release        1
 
 # Release on our GitHub mirror hosting udis86, glaze and the GCC 15 patch
 %global build_assets_release    v0.54-fedora
@@ -70,6 +72,7 @@ Source30:       https://github.com/AshBuk/Hyprland-Fedora/releases/download/%{bu
 # Subpackage sources
 Source40:       https://github.com/hyprwm/hyprlock/archive/refs/tags/v%{hyprlock_version}.tar.gz#/hyprlock-%{hyprlock_version}.tar.gz
 Source41:       https://github.com/hyprwm/hypridle/archive/refs/tags/v%{hypridle_version}.tar.gz#/hypridle-%{hypridle_version}.tar.gz
+Source42:       https://github.com/hyprwm/hyprland-guiutils/archive/refs/tags/v%{guiutils_version}.tar.gz#/hyprland-guiutils-%{guiutils_version}.tar.gz
 
 # Downstream compatibility patches (hosted in our release mirror)
 # Fedora 43 (GCC 15) lacks std::ranges::starts_with and std::string::subview
@@ -197,6 +200,19 @@ hypridle is Hyprland's idle daemon. It monitors user activity and triggers
 actions on inactivity timeouts, such as locking the screen, turning off
 the display, or suspending the system.
 
+
+# Subpackage: hyprland-guiutils
+%package -n hyprland-guiutils
+Version:        %{guiutils_version}
+Release:        %{guiutils_release}.%{hyprland_version}.%{hyprland_release}%{?dist}
+Summary:        Hyprland GUI utilities (dialogs, welcome, update screens)
+License:        BSD-3-Clause
+Requires:       hyprland%{?_isa} = %{hyprland_version}-%{hyprland_release}%{?dist}
+
+%description -n hyprland-guiutils
+Small GUI helpers Hyprland calls for dialogs such as "app not responding"
+and permission prompts. Built on the vendored hyprtoolkit.
+
 %prep
 # -N: Patch0 is applied only on Fedora <= 43 (GCC 15)
 %autosetup -N -n Hyprland-%{hyprland_version}
@@ -226,6 +242,7 @@ tar -xzf %{SOURCE30}
 # Unpack subpackage sources
 tar -xzf %{SOURCE40}
 tar -xzf %{SOURCE41}
+tar -xzf %{SOURCE42}
 
 # Licenses of the vendored code shipped in the package (Lua keeps its own in lua.h)
 mkdir licenses
@@ -360,6 +377,18 @@ cmake -B build \
 cmake --build build --parallel %{_smp_build_ncpus}
 popd
 
+
+# 9) hyprland-guiutils (dialogs; built on the vendored hyprtoolkit)
+pushd hyprland-guiutils-%{guiutils_version}
+cmake -B build \
+  -DCMAKE_BUILD_TYPE=Release \
+  -DCMAKE_INSTALL_PREFIX=%{_prefix} \
+  -DCMAKE_INSTALL_RPATH="$VENDOR_RPATH" \
+  -DCMAKE_BUILD_WITH_INSTALL_RPATH=ON \
+  $GL_FLAGS
+cmake --build build --parallel %{_smp_build_ncpus}
+popd
+
 %check
 # Tests disabled: hyprtester doesn't support vendored deps
 
@@ -385,6 +414,9 @@ cp -a "$VENDOR_PREFIX"/lib64/lib*.so* "$VENDOR_DST/lib64/"
 # Install hyprlock and hypridle
 DESTDIR=%{buildroot} cmake --install hyprlock-%{hyprlock_version}/build
 DESTDIR=%{buildroot} cmake --install hypridle-%{hypridle_version}/build
+
+DESTDIR=%{buildroot} cmake --install hyprland-guiutils-%{guiutils_version}/build
+sed "s|^%{buildroot}||" hyprland-guiutils-%{guiutils_version}/build/install_manifest.txt > guiutils.files
 
 # Without RUNPATH the binaries and vendored libs can't find the vendored libs they depend on
 for elf in %{buildroot}%{_bindir}/{Hyprland,hyprctl,start-hyprland,hyprlock,hypridle} "$VENDOR_DST"/lib64/lib*.so.*.*; do
@@ -432,6 +464,10 @@ rm -rf %{buildroot}%{_includedir}/hyprland %{buildroot}%{_datadir}/pkgconfig/hyp
 %{_bindir}/hypridle
 %{_userunitdir}/hypridle.service
 %{_datadir}/hypr/hypridle.conf
+
+
+%files -n hyprland-guiutils -f guiutils.files
+%license hyprland-guiutils-%{guiutils_version}/LICENSE
 
 %changelog
 * Sat Nov 07 2026 Asher Buk <AshBuk@users.noreply.github.com> - 0.57.1-1
